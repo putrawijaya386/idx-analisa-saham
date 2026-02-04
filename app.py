@@ -4,28 +4,27 @@ import pandas as pd
 import plotly.express as px
 
 # ======================
-# CONFIG PAGE
+# KONFIGURASI HALAMAN
 # ======================
 st.set_page_config(
-    page_title="Analisis Saham Indonesia",
+    page_title="Platform Analisis Saham Indonesia",
     layout="wide"
 )
 
 # ======================
-# CSS ANTI LOMPAT
+# CSS (ANTI HILANG SAAT SCROLL)
 # ======================
 st.markdown("""
 <style>
 .scroll-container {
     overflow-x: auto;
     overflow-y: hidden;
-    white-space: nowrap;
-    padding-bottom: 10px;
+    width: 100%;
 }
-.metric-box {
-    background-color: #111827;
-    padding: 15px;
-    border-radius: 12px;
+.score-box {
+    background-color: #0f172a;
+    padding: 20px;
+    border-radius: 14px;
     text-align: center;
 }
 </style>
@@ -35,119 +34,160 @@ st.markdown("""
 # HEADER
 # ======================
 st.title("📊 Platform Analisis Saham Indonesia")
-st.caption("Fundamental • Seasonality • Edukasi | Data Otomatis")
+st.caption("Fundamental • Skor Saham • Pembanding • Seasonality • Edukasi Nasional")
 
 # ======================
 # INPUT SAHAM
 # ======================
-kode = st.text_input("Masukkan kode saham (contoh: BBCA.JK)", "BBCA.JK")
+colA, colB = st.columns(2)
 
-if kode:
+with colA:
+    kode_1 = st.text_input("Kode Saham Utama (contoh: BBCA.JK)", "BBCA.JK")
 
+with colB:
+    kode_2 = st.text_input("Bandingkan Dengan (opsional)", "BBRI.JK")
+
+# ======================
+# FUNGSI AMBIL DATA
+# ======================
+def get_data(kode):
     saham = yf.Ticker(kode)
     info = saham.info
+    hist = saham.history(period="5y")
+    return info, hist
+
+# ======================
+# FUNGSI SKOR SAHAM (0–100)
+# ======================
+def hitung_skor(info):
+    skor = 0
+
+    roe = info.get("returnOnEquity", 0)
+    pbv = info.get("priceToBook", 0)
+    pe = info.get("trailingPE", 0)
+    debt = info.get("debtToEquity", 0)
+
+    if roe > 0.15: skor += 30
+    elif roe > 0.10: skor += 20
+    elif roe > 0.05: skor += 10
+
+    if pbv < 1: skor += 25
+    elif pbv < 2: skor += 15
+    elif pbv < 3: skor += 5
+
+    if pe > 0 and pe < 15: skor += 25
+    elif pe < 25: skor += 15
+    elif pe < 40: skor += 5
+
+    if debt < 1: skor += 20
+    elif debt < 2: skor += 10
+
+    return min(skor, 100)
+
+# ======================
+# AMBIL DATA SAHAM UTAMA
+# ======================
+if kode_1:
+    info1, df1 = get_data(kode_1)
+    skor1 = hitung_skor(info1)
+
+    st.subheader("📌 Ringkasan Saham Utama")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Harga", f"Rp {info1.get('currentPrice',0):,.0f}")
+    c2.metric("ROE", f"{info1.get('returnOnEquity',0)*100:.2f}%")
+    c3.metric("PBV", f"{info1.get('priceToBook',0):.2f}")
+    c4.metric("PER", f"{info1.get('trailingPE',0):.2f}")
+    c5.metric("Skor Saham", f"{skor1}/100")
 
     # ======================
-    # METRIK UTAMA
+    # EDUKASI SKOR
     # ======================
-    col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric("Harga", f"Rp {info.get('currentPrice',0):,.0f}")
-    col2.metric("ROE", f"{info.get('returnOnEquity',0)*100:.2f}%")
-    col3.metric("PBV", f"{info.get('priceToBook',0):.2f}")
-    col4.metric("PER", f"{info.get('trailingPE',0):.2f}")
-
-    st.divider()
-
-    # ======================
-    # EDUKASI
-    # ======================
-    with st.expander("📘 Penjelasan Istilah (Untuk Pemula)", expanded=True):
+    with st.expander("📘 Cara Membaca Skor Saham"):
         st.markdown("""
-        **ROE (Return on Equity)**  
-        Mengukur kemampuan perusahaan menghasilkan laba dari modal pemegang saham.
+        **80–100** : Sangat kuat  
+        **60–79**  : Layak dipertimbangkan  
+        **40–59**  : Cukup / netral  
+        **<40**    : Perlu hati-hati  
 
-        **PBV (Price to Book Value)**  
-        Membandingkan harga saham dengan nilai buku perusahaan.
-
-        **PER (Price Earning Ratio)**  
-        Menunjukkan berapa tahun laba yang dibutuhkan untuk menutup harga saham.
+        Skor dihitung dari **ROE, PBV, PER, dan Hutang**.
         """)
 
     # ======================
     # DATA HISTORIS
     # ======================
-    df = saham.history(period="5y")
-    df['Return'] = df['Close'].pct_change()
-    df['Month'] = df.index.month
-    df['Quarter'] = df.index.to_period("Q").astype(str)
-
-    # ======================
-    # QUARTERLY BAR CHART
-    # ======================
-    quarter_df = df.groupby('Quarter')['Close'].mean().reset_index()
-
-    fig_quarter = px.bar(
-        quarter_df,
-        x="Quarter",
-        y="Close",
-        title="📊 Harga Rata-rata Per Kuartal",
-        height=300
-    )
-
-    fig_quarter.update_layout(
-        autosize=False,
-        margin=dict(l=20, r=20, t=50, b=20)
-    )
-
-    st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
-    st.plotly_chart(fig_quarter, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    df1['Return'] = df1['Close'].pct_change()
+    df1['Month'] = df1.index.month
+    df1['Quarter'] = df1.index.to_period("Q").astype(str)
 
     # ======================
     # SEASONALITY
     # ======================
-    seasonality = (
-        df.groupby('Month')['Return']
-        .mean()
-        .reset_index()
-    )
-
-    seasonality['Month'] = seasonality['Month'].map({
-        1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'Mei',6:'Jun',
-        7:'Jul',8:'Agu',9:'Sep',10:'Okt',11:'Nov',12:'Des'
+    season = df1.groupby("Month")["Return"].mean().reset_index()
+    season["Month"] = season["Month"].map({
+        1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"Mei",6:"Jun",
+        7:"Jul",8:"Agu",9:"Sep",10:"Okt",11:"Nov",12:"Des"
     })
+    season["Color"] = season["Return"].apply(lambda x: "Positive" if x >= 0 else "Negative")
 
     fig_season = px.bar(
-        seasonality,
+        season,
         x="Month",
         y="Return",
+        color="Color",
         title="📆 Seasonality Return Bulanan",
-        height=280
+        color_discrete_map={
+            "Positive": "#16a34a",
+            "Negative": "#dc2626"
+        }
     )
 
     fig_season.update_layout(
-        yaxis_tickformat=".2%",
+        width=900,
+        height=260,
         autosize=False,
-        margin=dict(l=20, r=20, t=50, b=20)
+        yaxis_tickformat=".2%",
+        showlegend=False
     )
 
     st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
-    st.plotly_chart(fig_season, use_container_width=True)
+    st.plotly_chart(fig_season, config={"responsive": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ======================
-    # INSIGHT OTOMATIS
-    # ======================
-    best_month = seasonality.loc[seasonality['Return'].idxmax()]
-    worst_month = seasonality.loc[seasonality['Return'].idxmin()]
+# ======================
+# PERBANDINGAN SAHAM
+# ======================
+if kode_2:
+    info2, _ = get_data(kode_2)
+    skor2 = hitung_skor(info2)
 
-    st.success(
-        f"📈 Bulan terbaik historis: **{best_month['Month']}** "
-        f"({best_month['Return']*100:.2f}%)"
-    )
+    st.subheader("⚖️ Perbandingan Saham")
 
-    st.warning(
-        f"📉 Bulan terlemah historis: **{worst_month['Month']}** "
-        f"({worst_month['Return']*100:.2f}%)"
-    )
+    banding = pd.DataFrame({
+        "Metrik": ["Harga", "ROE", "PBV", "PER", "Skor"],
+        kode_1: [
+            info1.get("currentPrice",0),
+            info1.get("returnOnEquity",0)*100,
+            info1.get("priceToBook",0),
+            info1.get("trailingPE",0),
+            skor1
+        ],
+        kode_2: [
+            info2.get("currentPrice",0),
+            info2.get("returnOnEquity",0)*100,
+            info2.get("priceToBook",0),
+            info2.get("trailingPE",0),
+            skor2
+        ]
+    })
+
+    st.dataframe(banding, use_container_width=True)
+
+    if skor1 > skor2:
+        st.success(f"📈 {kode_1} lebih unggul secara fundamental")
+    elif skor1 < skor2:
+        st.warning(f"📉 {kode_2} lebih unggul secara fundamental")
+    else:
+        st.info("⚖️ Keduanya relatif seimbang")
+
+st.caption("⚠️ Data historis & edukatif, bukan rekomendasi beli/jual.")
