@@ -1,14 +1,18 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 import plotly.express as px
 
+# =====================
+# PAGE CONFIG
+# =====================
 st.set_page_config(
     page_title="Analisis Saham Indonesia",
     layout="wide"
 )
 
 # =====================
-# CSS SCROLL HORIZONTAL
+# CSS SCROLL
 # =====================
 st.markdown("""
 <style>
@@ -21,10 +25,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Platform Analisis Saham Indonesia")
-st.caption("Fundamental • Skor • Laba Bersih • Seasonality 5 Tahun")
+st.caption("Fundamental • Skor • Cash Flow • Hutang • Seasonality")
 
 # =====================
-# INPUT KODE (TANPA .JK)
+# INPUT SAHAM
 # =====================
 kode_input = st.text_input(
     "Masukkan kode saham (contoh: BBCA, TLKM, BBRI)",
@@ -34,13 +38,23 @@ kode_input = st.text_input(
 kode = f"{kode_input}.JK"
 
 # =====================
-# FUNGSI AMAN
+# FUNGSI BANTU
 # =====================
 def safe_float(x, default=0.0):
     try:
         return float(x)
     except (TypeError, ValueError):
         return default
+
+def rupiah(x):
+    if x >= 1e12:
+        return f"Rp {x/1e12:.2f} T"
+    elif x >= 1e9:
+        return f"Rp {x/1e9:.2f} M"
+    elif x >= 1e6:
+        return f"Rp {x/1e6:.2f} Jt"
+    else:
+        return f"Rp {x:,.0f}"
 
 @st.cache_data
 def load_data(kode):
@@ -91,28 +105,43 @@ if kode_input:
         st.subheader(f"⭐ Skor Saham: **{skor}/100**")
 
         # =====================
-        # PENJELASAN
+        # TABEL FUNDAMENTAL
         # =====================
-        with st.expander("📘 Penjelasan ROE, PBV, PER"):
-            st.markdown("""
-**ROE (Return on Equity)**  
-Kemampuan perusahaan menghasilkan laba dari modal sendiri.
+        st.subheader("📋 Tabel Fundamental Perusahaan")
 
-**PBV (Price to Book Value)**  
-Menilai mahal/murah harga saham dibanding nilai buku.
+        fundamental_data = {
+            "Market Cap": rupiah(safe_float(info.get("marketCap"))),
+            "Pendapatan (Revenue)": rupiah(safe_float(info.get("totalRevenue"))),
+            "Laba Bersih": rupiah(safe_float(info.get("netIncomeToCommon"))),
+            "Operating Cash Flow": rupiah(safe_float(info.get("operatingCashflow"))),
+            "Free Cash Flow": rupiah(safe_float(info.get("freeCashflow"))),
+            "Total Hutang": rupiah(safe_float(info.get("totalDebt"))),
+            "Total Aset": rupiah(safe_float(info.get("totalAssets"))),
+            "Total Ekuitas": rupiah(safe_float(info.get("totalStockholderEquity"))),
+            "Kas & Setara Kas": rupiah(safe_float(info.get("cash")))
+        }
 
-**PER (Price to Earnings Ratio)**  
-Berapa kali investor membayar laba perusahaan.
-""")
+        fundamental_df = (
+            pd.DataFrame.from_dict(
+                fundamental_data,
+                orient="index",
+                columns=["Nilai"]
+            )
+            .reset_index()
+            .rename(columns={"index": "Indikator"})
+        )
+
+        st.dataframe(
+            fundamental_df,
+            use_container_width=True,
+            hide_index=True
+        )
 
         # =====================
         # LABA BERSIH 5 TAHUN
         # =====================
         kolom_laba = None
-        for col in [
-            "Net Income",
-            "Net Income Common Stockholders"
-        ]:
+        for col in ["Net Income", "Net Income Common Stockholders"]:
             if col in laba.columns:
                 kolom_laba = col
                 break
@@ -141,8 +170,6 @@ Berapa kali investor membayar laba perusahaan.
             st.markdown('<div class="scroll-box">', unsafe_allow_html=True)
             st.plotly_chart(fig_laba, use_container_width=False)
             st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.warning("Data laba bersih tidak tersedia.")
 
         # =====================
         # SEASONALITY
@@ -185,4 +212,4 @@ Berapa kali investor membayar laba perusahaan.
         st.error("Data tidak ditemukan atau Yahoo Finance bermasalah.")
         st.caption(str(e))
 
-st.caption("⚠️ Data edukatif, bukan rekomendasi beli/jual.")
+st.caption("⚠️ Data hanya untuk edukasi, bukan rekomendasi beli/jual.")
