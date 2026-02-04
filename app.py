@@ -3,150 +3,186 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(page_title="Analisis Saham Indonesia", layout="wide")
+# ======================
+# KONFIGURASI HALAMAN
+# ======================
+st.set_page_config(
+    page_title="Analisis Saham Indonesia",
+    layout="wide"
+)
 
-# =====================
-# CSS ANTI SCROLL HILANG
-# =====================
+# ======================
+# CSS (ANTI HILANG SAAT SCROLL)
+# ======================
 st.markdown("""
 <style>
-.scroll-box {
+.scroll-container {
     overflow-x: auto;
     overflow-y: hidden;
     width: 100%;
 }
+.info-box {
+    background-color: #111827;
+    padding: 15px;
+    border-radius: 12px;
+}
 </style>
 """, unsafe_allow_html=True)
 
+# ======================
+# HEADER
+# ======================
 st.title("📊 Platform Analisis Saham Indonesia")
-st.caption("Fundamental • Skor • Laba Bersih • Seasonality 5 Tahun")
+st.caption("Fundamental • Grafik • Seasonality • Edukasi Nasional")
 
-# =====================
-# INPUT
-# =====================
-kode = st.text_input("Masukkan kode saham (contoh: BBCA.JK)", "BBCA.JK")
-
-# =====================
-# AMBIL DATA AMAN
-# =====================
-@st.cache_data
-def load_data(kode):
-    saham = yf.Ticker(kode)
-    info = saham.info
-    harga = saham.history(period="5y", interval="1mo")
-    laba = saham.financials.T
-    return info, harga, laba
-
-def safe(x, default=0):
-    return x if x not in [None, ""] else default
+# ======================
+# INPUT SAHAM
+# ======================
+kode = st.text_input(
+    "Masukkan kode saham (contoh: BBCA.JK, TLKM.JK, BBRI.JK)",
+    value="BBCA.JK"
+)
 
 if kode:
-    info, df, laba = load_data(kode)
+    saham = yf.Ticker(kode)
+    info = saham.info
 
-    # =====================
+    # ======================
     # METRIK UTAMA
-    # =====================
-    harga_now = safe(info.get("currentPrice"))
-    roe = safe(info.get("returnOnEquity")) * 100
-    pbv = safe(info.get("priceToBook"))
-    pe = safe(info.get("trailingPE"))
-    net_income = safe(info.get("netIncomeToCommon"))
+    # ======================
+    st.subheader("📌 Ringkasan Utama")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Harga", f"Rp {harga_now:,.0f}")
-    c2.metric("ROE", f"{roe:.2f}%")
-    c3.metric("PBV", f"{pbv:.2f}")
-    c4.metric("PER", f"{pe:.2f}")
 
-    # =====================
-    # SKOR SAHAM (AMAN)
-    # =====================
-    skor = 0
-    if roe > 15: skor += 30
-    elif roe > 10: skor += 20
-    elif roe > 5: skor += 10
+    c1.metric("Harga Saham", f"Rp {info.get('currentPrice',0):,.0f}")
+    c2.metric("ROE", f"{info.get('returnOnEquity',0)*100:.2f}%")
+    c3.metric("PBV", f"{info.get('priceToBook',0):.2f}")
+    c4.metric("PER", f"{info.get('trailingPE',0):.2f}")
 
-    if pbv < 1: skor += 25
-    elif pbv < 2: skor += 15
-    elif pbv < 3: skor += 5
-
-    if 0 < pe < 15: skor += 25
-    elif pe < 25: skor += 15
-    elif pe < 40: skor += 5
-
-    skor = min(skor, 100)
-    st.subheader(f"⭐ Skor Saham: **{skor}/100**")
-
-    with st.expander("📘 Penjelasan ROE, PBV, PER"):
+    # ======================
+    # EDUKASI NASIONAL
+    # ======================
+    with st.expander("📘 Penjelasan Istilah (Bahasa Sederhana)", expanded=True):
         st.markdown("""
-**ROE (Return on Equity)**  
-Menunjukkan kemampuan perusahaan menghasilkan laba dari modal sendiri.
+        **ROE (Return on Equity)**  
+        Mengukur seberapa efisien perusahaan menghasilkan laba dari modal pemilik.
 
-**PBV (Price to Book Value)**  
-Menilai apakah harga saham mahal atau murah dibandingkan nilai bukunya.
+        **PBV (Price to Book Value)**  
+        Menunjukkan apakah harga saham mahal atau murah dibanding nilai bukunya.
 
-**PER (Price to Earnings Ratio)**  
-Berapa kali investor membayar laba perusahaan.
-""")
+        **PER (Price Earning Ratio)**  
+        Menggambarkan berapa tahun laba yang dibutuhkan untuk menutup harga saham.
 
-    # =====================
-    # LABA BERSIH 5 TAHUN
-    # =====================
-    if "Net Income" in laba.columns:
-        laba_bersih = laba["Net Income"].dropna().tail(5)
-        laba_df = laba_bersih.reset_index()
-        laba_df.columns = ["Tahun", "Laba Bersih"]
-        laba_df["Warna"] = laba_df["Laba Bersih"].apply(
-            lambda x: "Positif" if x >= 0 else "Negatif"
-        )
+        👉 Umumnya:
+        - ROE tinggi = bagus  
+        - PBV < 1 = relatif murah  
+        - PER wajar tergantung sektor
+        """)
 
-        fig_laba = px.bar(
-            laba_df,
-            x="Tahun",
-            y="Laba Bersih",
-            color="Warna",
-            title="💰 Laba Bersih Tahunan (5 Tahun)",
-            color_discrete_map={
-                "Positif": "#16a34a",
-                "Negatif": "#dc2626"
-            }
-        )
-        fig_laba.update_layout(height=300, showlegend=False)
+    st.divider()
 
-        st.markdown('<div class="scroll-box">', unsafe_allow_html=True)
-        st.plotly_chart(fig_laba, use_container_width=False)
-        st.markdown('</div>', unsafe_allow_html=True)
+    # ======================
+    # DATA HISTORIS
+    # ======================
+    df = saham.history(period="5y")
+    df['Return'] = df['Close'].pct_change()
+    df['Month'] = df.index.month
+    df['Quarter'] = df.index.to_period("Q").astype(str)
 
-    # =====================
-    # SEASONALITY 5 TAHUN
-    # =====================
-    df["Return"] = df["Close"].pct_change()
-    df["Month"] = df.index.month
+    # ======================
+    # GRAFIK KUARTAL
+    # ======================
+    st.subheader("📊 Pergerakan Harga Per Kuartal")
 
-    season = df.groupby("Month")["Return"].mean().reset_index()
-    season["Month"] = season["Month"].map({
+    quarter_df = df.groupby("Quarter")["Close"].mean().reset_index()
+    quarter_df["Change"] = quarter_df["Close"].diff()
+    quarter_df["Color"] = quarter_df["Change"].apply(
+        lambda x: "Naik" if x >= 0 else "Turun"
+    )
+
+    fig_quarter = px.bar(
+        quarter_df,
+        x="Quarter",
+        y="Close",
+        color="Color",
+        title="Harga Rata-rata Saham per Kuartal",
+        color_discrete_map={
+            "Naik": "#16a34a",
+            "Turun": "#dc2626"
+        }
+    )
+
+    fig_quarter.update_layout(
+        width=900,
+        height=280,
+        autosize=False,
+        showlegend=False,
+        margin=dict(l=30, r=30, t=50, b=30)
+    )
+
+    st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
+    st.plotly_chart(fig_quarter, config={"responsive": False})
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ======================
+    # SEASONALITY BULANAN
+    # ======================
+    st.subheader("📆 Seasonality (Pola Bulanan)")
+
+    seasonality = (
+        df.groupby("Month")["Return"]
+        .mean()
+        .reset_index()
+    )
+
+    seasonality["Month"] = seasonality["Month"].map({
         1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"Mei",6:"Jun",
         7:"Jul",8:"Agu",9:"Sep",10:"Okt",11:"Nov",12:"Des"
     })
-    season["Color"] = season["Return"].apply(
-        lambda x: "Positif" if x >= 0 else "Negatif"
+
+    seasonality["Color"] = seasonality["Return"].apply(
+        lambda x: "Positive" if x >= 0 else "Negative"
     )
 
     fig_season = px.bar(
-        season,
+        seasonality,
         x="Month",
         y="Return",
         color="Color",
-        title="📆 Seasonality Rata-rata Bulanan (5 Tahun)",
+        title="Rata-rata Return Bulanan (Seasonality)",
         color_discrete_map={
-            "Positif": "#16a34a",
-            "Negatif": "#dc2626"
+            "Positive": "#16a34a",
+            "Negative": "#dc2626"
         }
     )
-    fig_season.update_layout(height=260, showlegend=False, yaxis_tickformat=".2%")
 
-    st.markdown('<div class="scroll-box">', unsafe_allow_html=True)
-    st.plotly_chart(fig_season, use_container_width=False)
+    fig_season.update_layout(
+        width=900,
+        height=260,
+        autosize=False,
+        yaxis_tickformat=".2%",
+        showlegend=False,
+        margin=dict(l=30, r=30, t=50, b=30)
+    )
+
+    st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
+    st.plotly_chart(fig_season, config={"responsive": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-st.caption("⚠️ Data edukatif, bukan rekomendasi beli/jual.")
+    # ======================
+    # INSIGHT OTOMATIS
+    # ======================
+    best = seasonality.loc[seasonality["Return"].idxmax()]
+    worst = seasonality.loc[seasonality["Return"].idxmin()]
+
+    st.success(
+        f"📈 Bulan terbaik historis: **{best['Month']}** "
+        f"({best['Return']*100:.2f}%)"
+    )
+
+    st.warning(
+        f"📉 Bulan terlemah historis: **{worst['Month']}** "
+        f"({worst['Return']*100:.2f}%)"
+    )
+
+    st.caption("⚠️ Data bersifat historis, bukan rekomendasi beli/jual.")
